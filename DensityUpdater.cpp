@@ -39,7 +39,7 @@ void DensityUpdater::updateDensity(Particle& particle, const std::vector<Particl
 // ========================
 double DensityUpdater::calculateDensity(const Particle& particle, const std::vector<Particle>& neighbors, double h, const Kernel& kernel) const {
     double rho = 0.0;
-    //#pragma omp parallel for reduction(+:rho)
+    #pragma omp parallel for reduction(+:rho)
     for (size_t i = 0; i < neighbors.size(); ++i) {
         const auto& neighbor = neighbors[i];
         std::array<double, 3> r_ab = {
@@ -51,7 +51,7 @@ double DensityUpdater::calculateDensity(const Particle& particle, const std::vec
         double W_val = kernel.W(r_ab_norm, h);
         rho += neighbor.mass * W_val;
     }
-    return rho*1.3;
+    return rho;
 }
 
 // ========================

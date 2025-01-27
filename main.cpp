@@ -35,7 +35,7 @@ int main() {
         double beta = 1.0;
         auto dissipation = std::make_shared<DissipationTerms>(alpha, beta);
 
-        double eta = 1.4;
+        double eta = 1.2;
         double tol = 1e-6;
         
         double fixed_h = 0.009;      

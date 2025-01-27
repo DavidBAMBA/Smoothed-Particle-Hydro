@@ -1,10 +1,10 @@
 // Simulation.cpp
 #include "Simulation.h"
+#include "MathUtils.h"
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
 #include <filesystem>
-#include "MathUtils.h"
 #include <omp.h>
 #include <iomanip>
 
@@ -272,36 +272,42 @@ void Simulation::modifiedKDKStep(double timeStep) {
     // Paso 1: Calcular v^{n+1/2} y actualizar energía en medio paso (usando du/dt^n)
     #pragma omp parallel for
     for (size_t i = 0; i < particles.size(); ++i) {
-        // Actualizar velocidad a medio paso (Ecuación 5.7a)
+        if (particles[i].isGhost) continue; // No integrar partículas fantasma
+
+        // Actualizar velocidad a medio paso
         for (int j = 0; j < 3; ++j) {
             particles[i].velocity[j] += 0.5 * timeStep * a_n[i][j];
         }
 
-        // Actualizar energía interna a medio paso (análogo a 5.7a)
+        // Actualizar energía interna a medio paso
         particles[i].specificInternalEnergy += 0.5 * timeStep * energyRate_n[i];
     }
 
-    // Paso 2: Actualizar posiciones (Ecuación 5.7b)
+    // Paso 2: Actualizar posiciones
     #pragma omp parallel for
     for (size_t i = 0; i < particles.size(); ++i) {
+        if (particles[i].isGhost) continue; // No integrar partículas fantasma
+
         for (int j = 0; j < 3; ++j) {
             particles[i].position[j] += timeStep * particles[i].velocity[j];
         }
     }
 
-    // Paso 3: Calcular v* y actualizar energía a segundo medio paso (usando du/dt^n)
+    // Paso 3: Calcular v* y actualizar energía a segundo medio paso
     #pragma omp parallel for
     for (size_t i = 0; i < particles.size(); ++i) {
-        // Calcular v* (Ecuación 5.7c)
+        if (particles[i].isGhost) continue; // No integrar partículas fantasma
+
+        // Calcular v*
         for (int j = 0; j < 3; ++j) {
             particles[i].velocity[j] += 0.5 * timeStep * a_n[i][j];
         }
 
-        // Segundo medio paso para energía (du/dt^n)
+        // Segundo medio paso para energía
         particles[i].specificInternalEnergy += 0.5 * timeStep * energyRate_n[i];
     }
 
-    // Paso 4: Calcular a^{n+1} y (du/dt)^{n+1} en el nuevo estado (Ecuación 5.7d)
+    // Paso 4: Calcular a^{n+1} y (du/dt)^{n+1} en el nuevo estado
     #pragma omp parallel for
     for (size_t i = 0; i < particles.size(); ++i) {
         auto neighbors = getNeighbors(particles[i]);
@@ -318,16 +324,18 @@ void Simulation::modifiedKDKStep(double timeStep) {
         );
     }
 
-    // Paso 5: Corrección final para velocidades y energía (Ecuación 5.7e adaptada)
+    // Paso 5: Corrección final para velocidades y energía
     #pragma omp parallel for
     for (size_t i = 0; i < particles.size(); ++i) {
-        // Corrección de velocidad (5.7e)
+        if (particles[i].isGhost) continue; // No integrar partículas fantasma
+
+        // Corrección de velocidad
         for (int j = 0; j < 3; ++j) {
             particles[i].velocity[j] = v_n[i][j] + timeStep * a_n[i][j]
                 + 0.5 * timeStep * (particles[i].acceleration[j] - a_n[i][j]);
         }
 
-        // Corrección de energía: u^{n+1} = u^n + 0.5Δt[(du/dt)^n + (du/dt)^{n+1}]
+        // Corrección de energía
         particles[i].specificInternalEnergy = particles[i].specificInternalEnergy
             + 0.5 * timeStep * (particles[i].energyChangeRate - energyRate_n[i]);
     }
@@ -339,6 +347,7 @@ void Simulation::modifiedKDKStep(double timeStep) {
     }
 
     boundaries.apply(particles);
+    restoreGhostParticles();
     time += timeStep;
 }
 

@@ -29,21 +29,6 @@ void Boundaries::applyPeriodic(std::vector<Particle>& particles) {
     }
 }
 
-/* void Boundaries::applyFixed(std::vector<Particle>& particles) {
-    // Solo aplica a partículas reales cerca de los bordes
-    for (auto& p : particles) {
-        if (p.isGhost) continue;
-
-        // Fijar partículas reales en los extremos
-        if (p.position[0] <= x_min_) {
-            p.position[0] = x_min_;
-            p.velocity[0] = 0.0;
-        } else if (p.position[0] >= x_max_) {
-            p.position[0] = x_max_;
-            p.velocity[0] = 0.0;
-        }
-    }
-} */
 
 void Boundaries::applyFixed(std::vector<Particle>& particles) {
     // Variables para identificar las partículas fantasma más extremas

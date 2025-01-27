@@ -170,8 +170,8 @@ def plot_data(filename):
     step = os.path.splitext(os.path.basename(filename))[0].split('_')[-1]
     
     # Condiciones iniciales personalizadas
-    rhoL, uL, pL = 1.29979955, 0.0, 1.29979955
-    rhoR, uR, pR = 0.16270346, 0.0, 0.13016277
+    rhoL, uL, pL = 1.0, 0.0, 1.0
+    rhoR, uR, pR = 0.125, 0.0, 0.1
     gamma = 1.4  # Coincidir con la simulación
 
     # Calcular solución analítica
@@ -188,33 +188,33 @@ def plot_data(filename):
     fig, axs = plt.subplots(2, 2, figsize=(15, 10))
     
     # Gráfico 1: Velocidad
-    axs[0,0].scatter(real['x'], real['vx'], s=2, c='b', label='SPH Real')
+    axs[0,0].scatter(real['x'], real['vx'], s=2, c='r', label='SPH Real')
     axs[0,0].scatter(ghosts['x'], ghosts['vx'], s=2, c='k', label='SPH Ghost')
-    #axs[0,0].plot(x_analytic, u_an, 'k-', lw=2, label='Analítico')
+    axs[0,0].plot(x_analytic, u_an, 'k-', lw=2, label='Analítico')
     axs[0,0].set_title(f'Velocidad (t={time:.4f})')
-    #axs[0,0].set_xlim(-0.7, 0.7)
+    axs[0,0].set_xlim(-0.7, 0.7)
     axs[0,0].legend()
 
     # Gráfico 2: Presión
-    axs[0,1].scatter(real['x'], real['P'], s=2, c='b')
+    axs[0,1].scatter(real['x'], real['P'], s=2, c='r')
     axs[0,1].scatter(ghosts['x'], ghosts['P'], s=2, c='k')
-    #axs[0,1].plot(x_analytic, p_an, 'k-', lw=2)
+    axs[0,1].plot(x_analytic, p_an, 'k-', lw=2)
     axs[0,1].set_title('Presión')
-    #axs[0,1].set_xlim(-0.7, 0.7)
+    axs[0,1].set_xlim(-0.7, 0.7)
 
     # Gráfico 3: Energía Interna
-    axs[1,0].scatter(real['x'], real['u'], s=2, c='b')
+    axs[1,0].scatter(real['x'], real['u'], s=2, c='r')
     axs[1,0].scatter(ghosts['x'], ghosts['u'], s=2, c='k')
-    #axs[1,0].plot(x_analytic, eint_an, 'k-', lw=2)
+    axs[1,0].plot(x_analytic, eint_an, 'k-', lw=2)
     axs[1,0].set_title('Energía Interna')
-    #axs[1,0].set_xlim(-0.7, 0.7)
+    axs[1,0].set_xlim(-0.7, 0.7)
 
     # Gráfico 4: Densidad
-    axs[1,1].scatter(real['x'], real['rho'], s=2, c='b')
+    axs[1,1].scatter(real['x'], real['rho'], s=2, c='r')
     axs[1,1].scatter(ghosts['x'], ghosts['rho'], s=2, c='k')
-    #axs[1,1].plot(x_analytic, rho_an, 'k-', lw=2)
+    axs[1,1].plot(x_analytic, rho_an, 'k-', lw=2)
     axs[1,1].set_title('Densidad')
-    #axs[1,1].set_xlim(-0.7, 0.7)
+    axs[1,1].set_xlim(-0.7, 0.7)
 
     plt.tight_layout()
     plt.savefig(f'plot_step_{step}.png')
