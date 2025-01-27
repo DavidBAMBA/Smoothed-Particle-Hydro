@@ -1,4 +1,3 @@
-// Particle.cpp
 #include "Particle.h"
 #include "DensityUpdater.h"
 #include "EquationOfState.h"
@@ -13,10 +12,15 @@
 
 // Constructor
 Particle::Particle(const std::array<double, 3>& position,
-                   const std::array<double, 3>& velocity,
+                   const std::array<double, 3>& vel,
                    double mass,
-                   double specificInternalEnergy)
-    : mass(mass),
+                   double specificInternalEnergy,
+                   bool ghost,
+                   std::shared_ptr<GhostProperties> ghostProps)
+
+    : isGhost(ghost),
+      ghostProperties(ghostProps),
+      mass(mass),
       density(0.0),
       pressure(0.0),
       specificInternalEnergy(specificInternalEnergy),
@@ -25,14 +29,21 @@ Particle::Particle(const std::array<double, 3>& position,
       Omega(1.0),
       soundSpeed(0.0),
       position(position),
-      velocity(velocity),
+      velocity(vel),
       acceleration({0.0, 0.0, 0.0}),
       energyChangeRate(0.0),
       conv_h("con")
 {
+    if (isGhost && ghostProperties) {
+        // Asignar propiedades iniciales de la partícula fantasma desde ghostProperties
+        velocity = ghostProperties->initialVelocity;
+        density = ghostProperties->initialDensity;
+        pressure = ghostProperties->initialPressure;
+        specificInternalEnergy = ghostProperties->initialSpecificInternalEnergy;
+    }
+    // Inicializamos la energía específica total (para imprimir no relativista)
     updateTotalSpecificEnergy();
 }
-
 void Particle::updateDensity(const std::vector<Particle>& neighbors,
                             DensityUpdater& densityUpdater, 
                             const Kernel& kernel) {

@@ -29,17 +29,56 @@ void Boundaries::applyPeriodic(std::vector<Particle>& particles) {
     }
 }
 
-void Boundaries::applyFixed(std::vector<Particle>& particles) {
+/* void Boundaries::applyFixed(std::vector<Particle>& particles) {
+    // Solo aplica a partículas reales cerca de los bordes
     for (auto& p : particles) {
-        if (p.position[0] < x_min_) {
+        if (p.isGhost) continue;
+
+        // Fijar partículas reales en los extremos
+        if (p.position[0] <= x_min_) {
             p.position[0] = x_min_;
             p.velocity[0] = 0.0;
-        } else if (p.position[0] > x_max_) {
+        } else if (p.position[0] >= x_max_) {
             p.position[0] = x_max_;
             p.velocity[0] = 0.0;
         }
     }
+} */
+
+void Boundaries::applyFixed(std::vector<Particle>& particles) {
+    // Variables para identificar las partículas fantasma más extremas
+    Particle* leftMostGhost = nullptr;
+    Particle* rightMostGhost = nullptr;
+
+    // Buscar las partículas fantasma más extremas
+    for (auto& p : particles) {
+        if (!p.isGhost) continue; // Sólo aplicamos a partículas fantasma
+
+        if (p.position[0] < x_min_) {
+            // Buscar la partícula con posición más pequeña (extremo izquierdo)
+            if (!leftMostGhost || p.position[0] < leftMostGhost->position[0]) {
+                leftMostGhost = &p;
+            }
+        } else if (p.position[0] > x_max_) {
+            // Buscar la partícula con posición más grande (extremo derecho)
+            if (!rightMostGhost || p.position[0] > rightMostGhost->position[0]) {
+                rightMostGhost = &p;
+            }
+        }
+    }
+
+    // Aplicar condiciones de frontera a las partículas fantasma más extremas
+    if (leftMostGhost) {
+        leftMostGhost->velocity = {0.0, 0.0, 0.0}; // Fijar velocidad
+        leftMostGhost->position[0] = leftMostGhost->position[0]; // Opcional, mantener posición fija
+    }
+
+    if (rightMostGhost) {
+        rightMostGhost->velocity = {0.0, 0.0, 0.0}; // Fijar velocidad
+        rightMostGhost->position[0] = rightMostGhost->position[0]; // Opcional, mantener posición fija
+    }
 }
+
 
 void Boundaries::applyOpen(std::vector<Particle>& particles) {
     // En condiciones abiertas, si una partícula sale del rango,

@@ -11,8 +11,8 @@ int main() {
     try {
         // Definir parámetros
         int N = 4000;          // Número de partículas
-        double x_min = -2.0;
-        double x_max = 2.0;
+        double x_min = -1.0;
+        double x_max = 1.0;
         BoundaryType boundaryType = BoundaryType::FIXED; 
         // Otras opciones: BoundaryType::FIXED, BoundaryType::OPEN
 
@@ -32,11 +32,11 @@ int main() {
         auto kernel = std::make_shared<Kernel>(choice);
 
         double alpha = 1.0;
-        double beta = 2.0;
+        double beta = 1.0;
         auto dissipation = std::make_shared<DissipationTerms>(alpha, beta);
 
         double eta = 1.4;
-        double tol = 1e-4;
+        double tol = 1e-6;
         
         double fixed_h = 0.009;      
         bool use_fixed_h = false;

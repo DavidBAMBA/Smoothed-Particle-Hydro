@@ -3,6 +3,7 @@
 
 #include <vector>
 #include "Particle.h"
+class Particle; // Forward declaration
 
 enum class BoundaryType {
     PERIODIC,
