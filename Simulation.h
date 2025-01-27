@@ -33,6 +33,8 @@ public:
                BoundaryType boundaryType);
 
     void run(double endTime);
+    void restoreGhostParticles(); // Declaración del nuevo método
+
 
 private:
     double time;
@@ -49,6 +51,7 @@ private:
     double x_max;
 
     void leapfrogStep(double timeStep);
+    void modifiedKDKStep(double timeStep);
     void rungeKutta4Step(double timeStep);
     double calculateTimeStep() const;
     void writeOutputCSV(const std::string& filename) const;

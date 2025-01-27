@@ -151,18 +151,51 @@ double Simulation::calculateTimeStep() const {
     return min_dt;
 }
 
-void Simulation::leapfrogStep(double timeStep) {
-    // Paso 1: Actualizar velocidad a medio paso
+// Implementación del método restoreGhostParticles
+void Simulation::restoreGhostParticles() {
+    for (auto& p : particles) {
+        if (!p.isGhost || !p.ghostProperties) {
+            continue; // Solo restaurar para partículas fantasma con propiedades iniciales
+        }
 
+        // Restaura las propiedades primitivas iniciales de la ghost particle
+        p.velocity = p.ghostProperties->initialVelocity;
+        p.density = p.ghostProperties->initialDensity;
+        p.pressure = p.ghostProperties->initialPressure;
+        p.specificInternalEnergy = p.ghostProperties->initialSpecificInternalEnergy;
+
+   }
+}
+
+void Simulation::leapfrogStep(double timeStep)
+{
+    //--------------------------------------------------------------------------
+    // PASO 0 (implícito): Suponemos que 'particles[i].acceleration' y
+    // 'particles[i].energyChangeRate' ya contienen la aceleración y la
+    // derivada de la energía interna (du/dt) evaluadas en t_n. 
+    // Esto normalmente se hace al final del step anterior o justo antes
+    // de entrar aquí la primera vez.
+    //--------------------------------------------------------------------------
+    
+    //--------------------------------------------------------------------------
+    // Paso 1: medio paso para la velocidad y la energía interna
+    // v_{n+1/2} = v_n + 0.5 * dt * a_n
+    // u_{n+1/2} = u_n + 0.5 * dt * (du/dt)_n
+    //--------------------------------------------------------------------------
     #pragma omp parallel for
     for (size_t i = 0; i < particles.size(); ++i) {
+        // Actualizamos velocidad en semipaso
         for (int j = 0; j < 3; ++j) {
             particles[i].velocity[j] += 0.5 * timeStep * particles[i].acceleration[j];
-
         }
+        // Actualizamos energía interna en semipaso
+        particles[i].specificInternalEnergy += 0.5 * timeStep * particles[i].energyChangeRate;
     }
 
-    // Paso 2: Actualizar posición al tiempo n+1 usando velocidad a medio paso
+    //--------------------------------------------------------------------------
+    // Paso 2: mover la posición al paso n+1 usando la velocidad de medio paso
+    // x_{n+1} = x_n + dt * v_{n+1/2}
+    //--------------------------------------------------------------------------
     #pragma omp parallel for
     for (size_t i = 0; i < particles.size(); ++i) {
         for (int j = 0; j < 3; ++j) {
@@ -170,7 +203,10 @@ void Simulation::leapfrogStep(double timeStep) {
         }
     }
 
-    // Paso 3: Actualizar densidad, presión y velocidad del sonido al tiempo n+1
+    //--------------------------------------------------------------------------
+    // Paso 3: recalcular densidad, presión, sonido, aceleración y du/dt
+    //         en las posiciones x_{n+1}, con v_{n+1/2} (tiempo "n+1").
+    //--------------------------------------------------------------------------
     #pragma omp parallel for
     for (size_t i = 0; i < particles.size(); ++i) {
         auto neighbors = getNeighbors(particles[i]);
@@ -179,38 +215,130 @@ void Simulation::leapfrogStep(double timeStep) {
         particles[i].updateSoundSpeed(*eos);
     }
 
-    // Paso 4: Calcular aceleración y tasa de cambio de energía interna al tiempo n+1
     #pragma omp parallel for
     for (size_t i = 0; i < particles.size(); ++i) {
         auto neighbors = getNeighbors(particles[i]);
-        particles[i].calculateAccelerationAndEnergyChangeRate(neighbors, *kernel, *dissipation, *eos);
+        particles[i].calculateAccelerationAndEnergyChangeRate(
+            neighbors,
+            *kernel,
+            *dissipation,
+            *eos
+        );
     }
 
-    // Paso 5: Actualizar velocidad a tiempo n+1 usando aceleración al tiempo n+1
+    //--------------------------------------------------------------------------
+    // Paso 4: completar el paso para la velocidad y la energía interna
+    // v_{n+1} = v_{n+1/2} + 0.5 * dt * a_{n+1}
+    // u_{n+1} = u_{n+1/2} + 0.5 * dt * (du/dt)_{n+1}
+    //--------------------------------------------------------------------------
     #pragma omp parallel for
     for (size_t i = 0; i < particles.size(); ++i) {
         for (int j = 0; j < 3; ++j) {
             particles[i].velocity[j] += 0.5 * timeStep * particles[i].acceleration[j];
         }
+        particles[i].specificInternalEnergy += 0.5 * timeStep * particles[i].energyChangeRate;
     }
 
-    // Paso 6: Actualizar energía interna específica
-    #pragma omp parallel for
-    for (size_t i = 0; i < particles.size(); ++i) {
-        particles[i].specificInternalEnergy += timeStep * particles[i].energyChangeRate;
-    }
-
-
-    // Actualizar energía específica total
+    //--------------------------------------------------------------------------
+    // Paso 5: actualizar energía específica total (si se usa para diagnóstico)
+    //--------------------------------------------------------------------------
     #pragma omp parallel for
     for (size_t i = 0; i < particles.size(); ++i) {
         particles[i].updateTotalSpecificEnergy();
     }
 
-    // Aplicar condiciones de frontera
-    boundaries.apply(particles);
+    //--------------------------------------------------------------------------
+    // Paso 6: aplicar condiciones de frontera y avanzar el tiempo de la simulación
+    //--------------------------------------------------------------------------
+    restoreGhostParticles();
 
-    // Actualizar el tiempo
+    boundaries.apply(particles);
+    time += timeStep;
+}
+
+void Simulation::modifiedKDKStep(double timeStep) {
+    // Almacenar velocidades, aceleraciones y tasas de energía en t = n
+    std::vector<std::array<double, 3>> v_n(particles.size());
+    std::vector<std::array<double, 3>> a_n(particles.size());
+    std::vector<double> energyRate_n(particles.size());
+
+    #pragma omp parallel for
+    for (size_t i = 0; i < particles.size(); ++i) {
+        v_n[i] = particles[i].velocity;
+        a_n[i] = particles[i].acceleration;
+        energyRate_n[i] = particles[i].energyChangeRate;
+    }
+
+    // Paso 1: Calcular v^{n+1/2} y actualizar energía en medio paso (usando du/dt^n)
+    #pragma omp parallel for
+    for (size_t i = 0; i < particles.size(); ++i) {
+        // Actualizar velocidad a medio paso (Ecuación 5.7a)
+        for (int j = 0; j < 3; ++j) {
+            particles[i].velocity[j] += 0.5 * timeStep * a_n[i][j];
+        }
+
+        // Actualizar energía interna a medio paso (análogo a 5.7a)
+        particles[i].specificInternalEnergy += 0.5 * timeStep * energyRate_n[i];
+    }
+
+    // Paso 2: Actualizar posiciones (Ecuación 5.7b)
+    #pragma omp parallel for
+    for (size_t i = 0; i < particles.size(); ++i) {
+        for (int j = 0; j < 3; ++j) {
+            particles[i].position[j] += timeStep * particles[i].velocity[j];
+        }
+    }
+
+    // Paso 3: Calcular v* y actualizar energía a segundo medio paso (usando du/dt^n)
+    #pragma omp parallel for
+    for (size_t i = 0; i < particles.size(); ++i) {
+        // Calcular v* (Ecuación 5.7c)
+        for (int j = 0; j < 3; ++j) {
+            particles[i].velocity[j] += 0.5 * timeStep * a_n[i][j];
+        }
+
+        // Segundo medio paso para energía (du/dt^n)
+        particles[i].specificInternalEnergy += 0.5 * timeStep * energyRate_n[i];
+    }
+
+    // Paso 4: Calcular a^{n+1} y (du/dt)^{n+1} en el nuevo estado (Ecuación 5.7d)
+    #pragma omp parallel for
+    for (size_t i = 0; i < particles.size(); ++i) {
+        auto neighbors = getNeighbors(particles[i]);
+        particles[i].updateDensity(neighbors, densityUpdater, *kernel);
+        particles[i].updatePressure(*eos);
+        particles[i].updateSoundSpeed(*eos);
+    }
+
+    #pragma omp parallel for
+    for (size_t i = 0; i < particles.size(); ++i) {
+        auto neighbors = getNeighbors(particles[i]);
+        particles[i].calculateAccelerationAndEnergyChangeRate(
+            neighbors, *kernel, *dissipation, *eos
+        );
+    }
+
+    // Paso 5: Corrección final para velocidades y energía (Ecuación 5.7e adaptada)
+    #pragma omp parallel for
+    for (size_t i = 0; i < particles.size(); ++i) {
+        // Corrección de velocidad (5.7e)
+        for (int j = 0; j < 3; ++j) {
+            particles[i].velocity[j] = v_n[i][j] + timeStep * a_n[i][j]
+                + 0.5 * timeStep * (particles[i].acceleration[j] - a_n[i][j]);
+        }
+
+        // Corrección de energía: u^{n+1} = u^n + 0.5Δt[(du/dt)^n + (du/dt)^{n+1}]
+        particles[i].specificInternalEnergy = particles[i].specificInternalEnergy
+            + 0.5 * timeStep * (particles[i].energyChangeRate - energyRate_n[i]);
+    }
+
+    // Actualizar energía total y aplicar fronteras
+    #pragma omp parallel for
+    for (size_t i = 0; i < particles.size(); ++i) {
+        particles[i].updateTotalSpecificEnergy();
+    }
+
+    boundaries.apply(particles);
     time += timeStep;
 }
 
@@ -407,14 +535,14 @@ void Simulation::run(double endTime) {
         double newTimeStep = calculateTimeStep(); // Usar el miembro eos
 
         // Escribir los datos en un archivo CSV cada 100 pasos
-        if (step % 300 == 0) {
+        if (step % 500 == 0) {
             std::string filename = "output_step_" + std::to_string(step) + ".csv";
             writeOutputCSV(filename);
         }
 
         // Llamar al integrador leapfrog
-        //leapfrogStep(newTimeStep);
-        rungeKutta4Step(newTimeStep);
+        leapfrogStep(newTimeStep);
+        //rungeKutta4Step(newTimeStep);
         std::cout << "---------------------------------------------------------------------------\n"
                   << " \t STEP: " << step << "\t dt: "<< newTimeStep << "\t time: "<< time <<"\n"
                   << "---------------------------------------------------------------------------\n";
@@ -442,10 +570,11 @@ void Simulation::writeOutputCSV(const std::string& filename) const {
     file << std::fixed << std::setprecision(8);
 
     // Escribir encabezados
-    file << "t\tx\ty\tz\tvx\tvy\tvz\tP\tu\trho\th\tmass\tOmega\tconv\n";
+    file << "t\tIsGhost\tx\ty\tz\tvx\tvy\tvz\tP\tu\trho\th\tmass\tOmega\tconv\n";
 
     for (const auto& particle : particles) {
         file << time << "\t"
+            << particle.isGhost     << "\t"
             << particle.position[0] << "\t"
             << particle.position[1] << "\t"
             << particle.position[2] << "\t"

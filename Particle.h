@@ -5,7 +5,7 @@
 #include <array>
 #include <string>
 #include <omp.h>
-
+#include <memory>
 #include <vector>
 
 class EquationOfState;
@@ -13,12 +13,26 @@ class DissipationTerms;
 class DensityUpdater;
 class Kernel;
 
+// Propiedades iniciales específicas para partículas fantasma
+struct GhostProperties {
+    std::array<double, 3> initialVelocity;
+    double initialDensity;
+    double initialPressure;
+    double initialSpecificInternalEnergy;
+};
+
 class Particle {
 public:
+
+    bool isGhost;
+    std::shared_ptr<GhostProperties> ghostProperties; // Propiedades compartidas entre partículas fantasma
+
     Particle(const std::array<double, 3>& position,
              const std::array<double, 3>& velocity,
              double mass,
-             double specificInternalEnergy);
+             double specificInternalEnergy,
+             bool ghost = false,
+             std::shared_ptr<GhostProperties> ghostProps = nullptr);
 
     // Métodos para actualizar variables físicas
     void updateDensity(const std::vector<Particle>& neighbors, DensityUpdater& densityUpdater, const Kernel& kernel);
