@@ -1,3 +1,4 @@
+
 #include "InitialConditions.h"
 #include <cmath>
 #include "DensityUpdater.h"
@@ -19,98 +20,81 @@ void InitialConditions::initializeParticles(std::vector<Particle>& particles,
     DensityUpdater densityUpdater(1.2, 1e-4, false, 0.1);
 
     switch (icType) {
-// Ejemplo de distribución 1D para SOD usando repartición proporcional a la masa
-    case InitialConditionType::SOD:
-        {
-            // Datos del problema
-            double density_left  = 1.0;
-            double density_right = 0.125;
-            double pressure_left  = 1.0;
-            double pressure_right = 0.1;
-            // Se asume que x_min y x_max están definidos
+        case InitialConditionType::SOD: {
+            // ---- PARÁMETROS DEL PROBLEMA SOD ----
+            const double density_left = 1.0;
+            const double density_right = 0.125;
+            const double pressure_left = 1.0;
+            const double pressure_right = 0.1;
+            const double x_discontinuity = 0.5 * (x_min + x_max);
 
-            // La discontinuidad se coloca, por ejemplo, de forma proporcional (en este caso, en el centro)
-            double x_discontinuity = 0.5 * (x_min + x_max);
-            
-            // Longitudes de cada región (en 1D, es simplemente la longitud)
-            double L_left  = x_discontinuity - x_min;
-            double L_right = x_max - x_discontinuity;
-            
-            // Calcula la masa total en cada región (masa = densidad * longitud)
-            double mass_total_left  = density_left  * L_left;
-            double mass_total_right = density_right * L_right;
-            
-            // Número total de partículas (por ejemplo, 1000)
-            //int N = 1000;
-            
-            // Asignar el número de partículas de cada lado de manera proporcional a su masa total
-            int N_left  = static_cast<int>( N * mass_total_left  / (mass_total_left  + mass_total_right) );
+            // ---- EXTENDER DOMINIO ----
+            const double x_min_extended = x_min - 0.2 * (x_max - x_min);
+            const double x_max_extended = x_max + 0.2 * (x_max - x_min);
+            const double extended_volume_left = x_discontinuity - x_min_extended;
+            const double extended_volume_right = x_max_extended - x_discontinuity;
+
+            // ---- CÁLCULO DE DISTRIBUCIÓN ----
+            const double mass_left = density_left * extended_volume_left;
+            const double mass_right = density_right * extended_volume_right;
+            const double total_mass = mass_left + mass_right;
+
+            int N_left = static_cast<int>(N * mass_left / total_mass);
             int N_right = N - N_left;
-            
-            // Espaciamiento en cada región (se coloca cada partícula en el centro de su celda)
-            double dx_left  = L_left  / N_left;
-            double dx_right = L_right / N_right;
-            
-            // Se calcula una masa única para cada partícula (la masa total del sistema dividido entre N)
-            double mass_total = mass_total_left + mass_total_right;
-            double mass_per_particle = mass_total / N;
-            
-            
-            // Distribución en la región izquierda
+
+            const double dx_left = extended_volume_left / N_left;
+            const double dx_right = extended_volume_right / N_right;
+            const double mass_per_particle = total_mass / (N_left + N_right);
+
+            // ---- CREAR TODAS LAS PARTICULAS COMO REALES ----
+            auto createParticle = [&](double x, double density, double pressure, double h) {
+                std::array<double, 3> position = {x, 0.0, 0.0};
+                std::array<double, 3> velocity = {0.0, 0.0, 0.0};
+                double u = pressure / ((GAMMA - 1.0) * density);
+                Particle p(position, velocity, mass_per_particle, u);
+                p.density = density;
+                p.pressure = pressure;
+                p.h = h;
+                return p;
+            };
+
+            // Partículas en el lado izquierdo (incluyendo dominio extendido)
             for (int i = 0; i < N_left; ++i) {
-                // Posición centrada en la celda
-                double x = x_min + (i + 0.5) * dx_left;
-                std::array<double, 3> position = { x, 0.0, 0.0 };
-                std::array<double, 3> velocity = { 0.0, 0.0, 0.0 };
-                
-                double pressure = pressure_left;
-                double density  = density_left;
-                double specificInternalEnergy = pressure / ((GAMMA - 1.0) * density);
-                
-                // Construye la partícula (se asume que el constructor recibe (posición, velocidad, masa, energía interna))
-                Particle particle(position, velocity, mass_per_particle, specificInternalEnergy);
-                particle.density = density;
-                
-                // Calcular el parámetro de suavizado; aquí usamos un factor (por ejemplo 1.2) por similitud con el ejemplo original.
-                //particle.h = 1.2 * (mass_per_particle / density_left); 
-                particle.h = 0.0005;//
-                particle.Omega = densityUpdater.calculateOmega(particle, particles, particle.h, particle.density, *kernel);
-                particle.pressure = pressure_left;
-                particle.updatePressure(*eos);
-                //particle.updateSoundSpeed(*eos);
-                //particle.updateDensity(particle[i]);
-                
-                particles.push_back(particle);
+                double x = x_min_extended + (i + 0.5) * dx_left;
+                particles.push_back(createParticle(x, density_left, pressure_left, 1.2 * dx_left));
             }
-            
-            // Distribución en la región derecha
+
+            // Partículas en el lado derecho (incluyendo dominio extendido)
             for (int i = 0; i < N_right; ++i) {
                 double x = x_discontinuity + (i + 0.5) * dx_right;
-                std::array<double, 3> position = { x, 0.0, 0.0 };
-                std::array<double, 3> velocity = { 0.0, 0.0, 0.0 };
-                
-                double pressure = pressure_right;
-                double density  = density_right;
-                double specificInternalEnergy = pressure / ((GAMMA - 1.0) * density);
-                
-                Particle particle(position, velocity, mass_per_particle, specificInternalEnergy);
-                particle.density = density;
-                
-                particle.h = 0.005;//1.2 * (mass_per_particle / density_right);
-                //particle.h = 1.2 * (mass_per_particle / density_left); //0.0005;//
-                particle.Omega = densityUpdater.calculateOmega(particle, particles, particle.h, particle.density, *kernel);
-                particle.pressure = pressure_right;
-
-                
-                particle.updatePressure(*eos);
-                //particle.updateSoundSpeed(*eos);
-                
-                particles.push_back(particle);
+                particles.push_back(createParticle(x, density_right, pressure_right, 1.2 * dx_right));
             }
+
+            // ---- CÁLCULO DE PROPIEDADES FÍSICAS ----
+            #pragma omp parallel for
+            for (size_t i = 0; i < particles.size(); ++i) {
+                auto& p = particles[i];
+                p.updateDensity(particles, densityUpdater, *kernel);
+                p.updatePressure(*eos);
+                p.updateSoundSpeed(*eos);
+            }
+
+            // ---- MARCAR PARTICULAS COMO GHOST ----
+            const int numGhostLeft = static_cast<int>(std::ceil(N_left * 0.2));
+            const int numGhostRight = static_cast<int>(std::ceil(N_right * 0.2));
+
+            // Marcar partículas fantasma desde el extremo izquierdo
+            for (int i = 0; i < numGhostLeft; ++i) {
+                particles[i].isGhost = true;
+            }
+
+            // Marcar partículas fantasma desde el extremo derecho
+            for (int i = 0; i < numGhostRight; ++i) {
+                particles[particles.size() - 1 - i].isGhost = true;
+            }
+
+            break;
         }
-    break;
-
-
     case InitialConditionType::BLAST:
         {
             // ---- BLAST WAVE ----

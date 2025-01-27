@@ -7,7 +7,7 @@
 #include "Kernel.h"
 #include "EquationOfState.h"
 #include "DensityUpdater.h"
-#include <omp.h>
+
 
 enum class InitialConditionType {
     SOD,
@@ -18,6 +18,7 @@ enum class InitialConditionType {
 
 class InitialConditions {
 public:
+
     InitialConditions();
     void setInitialConditionType(InitialConditionType type);
     void initializeParticles(std::vector<Particle>& particles,
